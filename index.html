@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Enrollment System</title>
+<style>
+:root{--bg:#F3F5F9;--surface:#fff;--ink:#16202E;--muted:#5D6B80;--line:#D5DCE7;--accent:#2B4FD8;--accent-ink:#fff;--danger:#C2342B;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0F141C;--surface:#18202C;--ink:#E7ECF4;--muted:#9AA8BD;--line:#2B3748;--accent:#7C9BFF;--accent-ink:#0F141C;--danger:#FF7B72;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+header{padding:20px clamp(16px,4vw,48px);border-bottom:1px solid var(--line);background:var(--surface)}
+h1{margin:0;font-size:1.4rem}
+main{max-width:1100px;margin:24px auto;padding:0 clamp(16px,4vw,48px);display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start}
+@media (max-width:820px){main{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.panel h2{margin:0 0 14px;font-size:1.1rem}
+label{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 4px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input:focus,select:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+.btns{display:flex;gap:8px;margin-top:18px}
+button{font:inherit;cursor:pointer;border-radius:8px;padding:9px 14px;border:1px solid var(--line);background:transparent;color:var(--ink)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;flex:1}
+button.danger{color:var(--danger)}
+.msg{min-height:1.3em;font-size:.88rem;margin:10px 0 0;color:var(--muted)}
+.msg.err{color:var(--danger)}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.stat{flex:1;min-width:110px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.stat b{display:block;font-size:1.5rem}
+.stat span{font-size:.8rem;color:var(--muted)}
+.tools{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.tools input{flex:2;min-width:160px}.tools select{flex:1;min-width:140px}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:.82rem}
+td small{color:var(--muted)}
+.empty{color:var(--muted);padding:20px 0;text-align:center}
+</style>
+</head>
+<body>
+<header><h1>Student Enrollment System</h1></header>
+<main>
+  <section class="panel">
+    <h2 id="formTitle">Enroll a student</h2>
+    <form id="form" novalidate>
+      <label for="name">Full name</label>
+      <input id="name" required>
+      <label for="email">Email</label>
+      <input id="email" type="email" required>
+      <label for="dob">Date of birth</label>
+      <input id="dob" type="date" required>
+      <label for="program">Program</label>
+      <select id="program" required>
+        <option value="">Select a program</option>
+        <option>BS Computer Science</option>
+        <option>BS Information Technology</option>
+        <option>BS Business Administration</option>
+        <option>BS Nursing</option>
+        <option>BS Education</option>
+      </select>
+      <label for="year">Year level</label>
+      <select id="year" required>
+        <option value="">Select year level</option>
+        <option>1</option><option>2</option><option>3</option><option>4</option>
+      </select>
+      <div class="btns">
+        <button type="submit" class="primary" id="save">Enroll student</button>
+        <button type="button" id="cancel" hidden>Cancel</button>
+      </div>
+      <p class="msg" id="msg" role="status"></p>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Enrolled students</h2>
+    <div class="stats" id="stats"></div>
+    <div class="tools">
+      <input id="search" placeholder="Search by name, ID or email" aria-label="Search students">
+      <select id="filter" aria-label="Filter by program"><option value="">All programs</option></select>
+    </div>
+    <div class="wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Program</th><th>Year</th><th>Enrolled</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="empty" hidden>No students found.</p>
+  </section>
+</main>
+
+<script>
+const KEY = "enrollment-students";
+let students = [];
+let editingId = null;
+const $ = id => document.getElementById(id);
+
+function load(){
+  try { students = JSON.parse(localStorage.getItem(KEY)) || []; } catch(e){ students = []; }
+}
+function persist(){
+  try { localStorage.setItem(KEY, JSON.stringify(students)); } catch(e){}
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function newId(){
+  const y = new Date().getFullYear();
+  const n = students.reduce((m, s) => Math.max(m, parseInt(s.id.split("-")[1]) || 0), 0) + 1;
+  return y + "-" + String(n).padStart(4, "0");
+}
+function say(text, err){ $("msg").textContent = text; $("msg").className = "msg" + (err ? " err" : ""); }
+
+function render(){
+  const q = $("search").value.trim().toLowerCase();
+  const f = $("filter").value;
+  const list = students.filter(s =>
+    (!f || s.program === f) &&
+    (!q || [s.name, s.id, s.email].some(v => v.toLowerCase().includes(q))));
+
+  $("rows").innerHTML = list.map(s => `
+    <tr>
+      <td>${esc(s.id)}</td>
+      <td>${esc(s.name)}<br><small>${esc(s.email)}</small></td>
+      <td>${esc(s.program)}</td>
+      <td>${esc(s.year)}</td>
+      <td>${esc(s.date)}</td>
+      <td>
+        <button data-edit="${s.id}">Edit</button>
+        <button class="danger" data-del="${s.id}">Drop</button>
+      </td>
+    </tr>`).join("");
+  $("empty").hidden = list.length > 0;
+
+  const programs = [...new Set(students.map(s => s.program))];
+  const cur = $("filter").value;
+  $("filter").innerHTML = '<option value="">All programs</option>' +
+    programs.map(p => `<option${p === cur ? " selected" : ""}>${esc(p)}</option>`).join("");
+
+  $("stats").innerHTML =
+    `<div class="stat"><b>${students.length}</b><span>Total enrolled</span></div>` +
+    `<div class="stat"><b>${programs.length}</b><span>Programs</span></div>` +
+    `<div class="stat"><b>${list.length}</b><span>Showing</span></div>`;
+}
+
+function resetForm(){
+  editingId = null;
+  $("form").reset();
+  $("formTitle").textContent = "Enroll a student";
+  $("save").textContent = "Enroll student";
+  $("cancel").hidden = true;
+}
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const data = {
+    name: $("name").value.trim(),
+    email: $("email").value.trim(),
+    dob: $("dob").value,
+    program: $("program").value,
+    year: $("year").value
+  };
+  if (!data.name || !data.dob || !data.program || !data.year) return say("Fill in every field.", true);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email)) return say("Enter a valid email address.", true);
+  if (students.some(s => s.email.toLowerCase() === data.email.toLowerCase() && s.id !== editingId))
+    return say("A student with this email is already enrolled.", true);
+
+  if (editingId) {
+    Object.assign(students.find(s => s.id === editingId), data);
+    say("Student updated.");
+  } else {
+    students.push({ id: newId(), date: new Date().toISOString().slice(0, 10), ...data });
+    say("Student enrolled.");
+  }
+  persist(); resetForm(); render();
+});
+
+$("rows").addEventListener("click", e => {
+  const edit = e.target.dataset.edit, del = e.target.dataset.del;
+  if (edit) {
+    const s = students.find(x => x.id === edit);
+    editingId = s.id;
+    $("name").value = s.name; $("email").value = s.email; $("dob").value = s.dob;
+    $("program").value = s.program; $("year").value = s.year;
+    $("formTitle").textContent = "Edit student " + s.id;
+    $("save").textContent = "Save changes";
+    $("cancel").hidden = false;
+    $("name").focus();
+  }
+  if (del && confirm("Drop this student from enrollment?")) {
+    students = students.filter(s => s.id !== del);
+    persist(); if (editingId === del) resetForm(); render();
+  }
+});
+
+$("cancel").onclick = () => { resetForm(); say(""); };
+$("search").oninput = render;
+$("filter").onchange = render;
+
+load(); render();
+</script>
+</body>
+</html>
